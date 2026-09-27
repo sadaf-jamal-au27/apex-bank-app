@@ -1,0 +1,22 @@
+{
+  "name": "gke-banking-application",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r exec tsc --noEmit",
+    "dev:core": "node scripts/dev-core.mjs",
+    "dev:web": "pnpm --filter @banking/customer-web dev",
+    "dev:identity": "pnpm --filter @banking/identity-service dev",
+    "dev:account": "pnpm --filter @banking/account-service dev",
+    "dev:ledger": "pnpm --filter @banking/ledger-service dev",
+    "dev:transfer": "pnpm --filter @banking/transfer-service dev",
+    "dev:payment": "pnpm --filter @banking/payment-service dev",
+    "dev:card": "pnpm --filter @banking/card-service dev",
+    "dev:bff": "pnpm --filter @banking/bff-api-service dev"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

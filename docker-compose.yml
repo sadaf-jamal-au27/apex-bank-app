@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_DB: banking
+      POSTGRES_USER: banking_app
+      POSTGRES_PASSWORD: banking
+    volumes:
+      - banking_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U banking_app -d banking"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  banking_pg:
