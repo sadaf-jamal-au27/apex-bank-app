@@ -22,7 +22,11 @@ for (const filter of filters) {
   const child = spawn("pnpm", ["--filter", filter, "dev"], {
     cwd: root,
     stdio: "inherit",
-    env: process.env,
+    env: {
+      ...process.env,
+      ALLOW_INSECURE_DB_DEFAULTS: process.env.ALLOW_INSECURE_DB_DEFAULTS ?? "true",
+      DB_PASSWORD: process.env.DB_PASSWORD ?? "banking",
+    },
   });
   child.on("exit", (code) => {
     if (code && code !== 0) console.error(`${filter} exited ${code}`);

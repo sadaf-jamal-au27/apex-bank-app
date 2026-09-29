@@ -26,17 +26,37 @@ export type BankingService = {
   start: () => Promise<void>;
 };
 
+export function internalHeaders(extra?: HeadersInit): Record<string, string> {
+  const token = process.env.SERVICE_MESH_TOKEN ?? "";
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (token) headers["x-internal-token"] = token;
+  if (extra) {
+    const h = new Headers(extra);
+    h.forEach((v, k) => {
+      headers[k] = v;
+    });
+  }
+  return headers;
+}
+
 export function createService(opts: CreateServiceOptions): BankingService {
+  const requireDbPassword = opts.enableDatabase && process.env.ALLOW_INSECURE_DB_DEFAULTS !== "true";
+  if (requireDbPassword && !process.env.DB_PASSWORD) {
+    throw new Error("DB_PASSWORD is required (set ALLOW_INSECURE_DB_DEFAULTS=true only for local demo)");
+  }
+
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL ?? "info",
       redact: [
         "req.headers.authorization",
+        "req.headers.x-internal-token",
         "password",
         "accessToken",
         "pan",
         "cvv",
         "pin",
+        "totp",
       ],
     },
     trustProxy: true,
@@ -91,9 +111,20 @@ export function createService(opts: CreateServiceOptions): BankingService {
     timeWindow: "1 minute",
   });
 
-  app.addHook("onRequest", async (_req, reply) => {
+  const meshToken = process.env.SERVICE_MESH_TOKEN ?? "";
+  const requireInternal = process.env.REQUIRE_INTERNAL_AUTH === "true";
+
+  app.addHook("onRequest", async (req, reply) => {
     reply.header("x-service-name", opts.name);
     reply.header("x-service-domain", opts.domain);
+    const path = req.url.split("?")[0] ?? "";
+    if (path.startsWith("/health/")) return;
+    if (opts.name === "bff-api-service") return;
+    if (opts.name === "identity-service" && path.startsWith("/v1/auth/")) return;
+    if (!requireInternal) return;
+    if (!meshToken || req.headers["x-internal-token"] !== meshToken) {
+      return reply.code(401).send({ error: "internal_auth_required" });
+    }
   });
 
   app.get("/health/live", async () => ({ status: "live" }));

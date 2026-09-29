@@ -5,7 +5,7 @@
   "packageManager": "pnpm@9.15.4",
   "scripts": {
     "build": "pnpm -r build",
-    "typecheck": "pnpm -r exec tsc --noEmit",
+    "typecheck": "pnpm --filter @banking/service-core build && pnpm -r exec tsc --noEmit",
     "dev:core": "node scripts/dev-core.mjs",
     "dev:web": "pnpm --filter @banking/customer-web dev",
     "dev:identity": "pnpm --filter @banking/identity-service dev",
