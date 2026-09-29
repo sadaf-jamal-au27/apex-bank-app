@@ -14,7 +14,8 @@ flowchart LR
   GKE --> SQL[(Cloud SQL private IP)]
 ```
 
-Today we only build **APP**.
+Infra: [LANDING_ZONE.md](../../../banking-infra/gke-banking-infra/docs/LANDING_ZONE.md) (normal Terraform, no Fabric FAST).  
+Helm: **gke-banking-devops** (next).
 
 ## Money flow (must stay correct)
 
@@ -81,7 +82,10 @@ flowchart TB
 3. Logs redact `authorization`, `password`, `pan`, `cvv`
 4. PAN / CVV never stored — cards table keeps last4 + token id only
 5. Every money mutation writes `audit.events`
-6. Later (infra): private SQL, WI, NetworkPolicy, no public DB
+6. Later (infra): private SQL via PSC, WI, NetworkPolicy, VPC-SC, no public DB
+7. Ledger journals / audit events are **immutable** (DB triggers)
+8. Transfers ≥ ₹1 lakh (configurable) require a **different approver**
+9. Internal service calls carry `x-internal-token` when `REQUIRE_INTERNAL_AUTH=true`
 
 ## Schema layout (one DB, many schemas)
 

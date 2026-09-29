@@ -1,4 +1,5 @@
 import type { FastifyInstance, ServiceDeps } from "@banking/service-core";
+import { internalHeaders } from "@banking/service-core";
 
 const LEDGER_URL = process.env.LEDGER_URL ?? "http://127.0.0.1:4104";
 const ACCOUNT_URL = process.env.ACCOUNT_URL ?? "http://127.0.0.1:4103";
@@ -24,7 +25,9 @@ export function registerRoutes(app: FastifyInstance, deps: ServiceDeps): void {
     }
 
     // Ownership check on source account
-    const ownRes = await fetch(`${ACCOUNT_URL}/v1/accounts/${from}?userId=${body.userId}`);
+    const ownRes = await fetch(`${ACCOUNT_URL}/v1/accounts/${from}?userId=${body.userId}`, {
+      headers: internalHeaders(),
+    });
     if (!ownRes.ok) return reply.code(403).send({ error: "from_account_forbidden" });
 
     let to = body.toAccountId ?? "";
@@ -51,16 +54,32 @@ export function registerRoutes(app: FastifyInstance, deps: ServiceDeps): void {
     }
 
     const transferId = crypto.randomUUID();
+    const threshold = Number(process.env.MAKER_CHECKER_THRESHOLD_PAISE ?? "10000000");
+    const needsApproval = amount >= threshold;
+    const initialStatus = needsApproval ? "pending_approval" : "pending";
     await deps.db.query(
       `INSERT INTO transfer.transfers
          (id, from_account_id, to_account_id, amount_paise, status, idempotency_key)
-       VALUES ($1,$2,$3,$4,'pending',$5)`,
-      [transferId, from, to, amount, key]
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [transferId, from, to, amount, initialStatus, key]
     );
+
+    if (needsApproval) {
+      await deps.db.query(
+        `INSERT INTO audit.events (actor_user_id, action, resource_type, resource_id, meta)
+         VALUES ($1,'transfer.pending_approval','transfer',$2,$3::jsonb)`,
+        [body.userId, transferId, JSON.stringify({ amountPaise: amount, threshold })]
+      );
+      return reply.code(202).send({
+        id: transferId,
+        status: "pending_approval",
+        amountPaise: amount,
+      });
+    }
 
     const journalRes = await fetch(`${LEDGER_URL}/v1/journals`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: internalHeaders(),
       body: JSON.stringify({
         idempotencyKey: `xfer:${key}`,
         referenceType: "transfer",
@@ -100,6 +119,59 @@ export function registerRoutes(app: FastifyInstance, deps: ServiceDeps): void {
       journalId: journalBody.journalId,
       amountPaise: amount,
     });
+  });
+
+  app.post("/v1/transfers/:id/approve", async (req, reply) => {
+    if (!deps.db) return reply.code(503).send({ error: "database_unavailable" });
+    const { id } = req.params as { id: string };
+    const body = req.body as { approverUserId?: string };
+    if (!body.approverUserId) return reply.code(400).send({ error: "approver_required" });
+
+    const { rows } = await deps.db.query(
+      `SELECT * FROM transfer.transfers WHERE id=$1 AND status='pending_approval'`,
+      [id]
+    );
+    const xfer = rows[0];
+    if (!xfer) return reply.code(404).send({ error: "not_found_or_not_pending" });
+
+    const maker = await deps.db.query<{ actor_user_id: string }>(
+      `SELECT actor_user_id FROM audit.events
+       WHERE resource_type='transfer' AND resource_id=$1 AND action='transfer.pending_approval'
+       ORDER BY id ASC LIMIT 1`,
+      [id]
+    );
+    if (maker.rows[0]?.actor_user_id === body.approverUserId) {
+      return reply.code(403).send({ error: "maker_cannot_approve" });
+    }
+
+    const journalRes = await fetch(`${LEDGER_URL}/v1/journals`, {
+      method: "POST",
+      headers: internalHeaders(),
+      body: JSON.stringify({
+        idempotencyKey: `xfer:${xfer.idempotency_key}`,
+        referenceType: "transfer",
+        referenceId: id,
+        narration: "IMPS / internal transfer (approved)",
+        legs: [
+          { accountId: xfer.from_account_id, direction: "debit", amountPaise: Number(xfer.amount_paise) },
+          { accountId: xfer.to_account_id, direction: "credit", amountPaise: Number(xfer.amount_paise) },
+        ],
+      }),
+    });
+    const journalBody = (await journalRes.json()) as { journalId?: string; error?: string };
+    if (!journalRes.ok) {
+      return reply.code(journalRes.status).send({ error: journalBody.error ?? "ledger_failed" });
+    }
+    await deps.db.query(
+      `UPDATE transfer.transfers SET status='posted', journal_id=$1 WHERE id=$2`,
+      [journalBody.journalId, id]
+    );
+    await deps.db.query(
+      `INSERT INTO audit.events (actor_user_id, action, resource_type, resource_id, meta)
+       VALUES ($1,'transfer.approved','transfer',$2,$3::jsonb)`,
+      [body.approverUserId, id, JSON.stringify({ journalId: journalBody.journalId })]
+    );
+    return { id, status: "posted", journalId: journalBody.journalId };
   });
 
   app.get("/v1/transfers/:id", async (req, reply) => {

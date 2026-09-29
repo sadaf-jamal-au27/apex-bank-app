@@ -1,0 +1,76 @@
+name: Application CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+
+concurrency:
+  group: app-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+  REGION: asia-south1
+  GAR_REPO: banking
+
+jobs:
+  build:
+    name: Typecheck & build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm build
+
+  images:
+    name: Docker build (${{ matrix.pkg }})
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - dir: identity-service
+            pkg: "@banking/identity-service"
+          - dir: account-service
+            pkg: "@banking/account-service"
+          - dir: ledger-service
+            pkg: "@banking/ledger-service"
+          - dir: transfer-service
+            pkg: "@banking/transfer-service"
+          - dir: payment-service
+            pkg: "@banking/payment-service"
+          - dir: card-service
+            pkg: "@banking/card-service"
+          - dir: bff-api-service
+            pkg: "@banking/bff-api-service"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: |
+          docker build \
+            -f docker/service.Dockerfile \
+            --build-arg SERVICE_DIR=${{ matrix.dir }} \
+            --build-arg SERVICE_FILTER=${{ matrix.pkg }} \
+            -t banking/${{ matrix.dir }}:${{ github.sha }} \
+            .

@@ -1,7 +1,10 @@
 # GKE Banking Application
 
-End-to-end **digital banking** platform (application repo).  
-Sister repos (later): `gke-banking-infra` · `gke-banking-devops`.
+End-to-end **digital banking** platform.
+
+GitHub: **[sadaf-jamal-au27/apex-bank-app](https://github.com/sadaf-jamal-au27/apex-bank-app)**  
+Branching: `docs/BRANCHING.md` (`feature` → `develop` → `main`)  
+Infra (until its own repo): `sadaf-jamal-au27/gke-microservices` → `banking-infra/gke-banking-infra`
 
 ## Why this shape
 
@@ -50,6 +53,8 @@ export PGPASSWORD=banking
 psql -h 127.0.0.1 -p 5434 -U banking_app -d banking -f db/migrations/001_identity.sql
 psql -h 127.0.0.1 -p 5434 -U banking_app -d banking -f db/migrations/002_customer_account.sql
 psql -h 127.0.0.1 -p 5434 -U banking_app -d banking -f db/migrations/003_ledger.sql
+psql -h 127.0.0.1 -p 5434 -U banking_app -d banking -f db/migrations/004_banking_ops.sql
+psql -h 127.0.0.1 -p 5434 -U banking_app -d banking -f db/migrations/005_audit_controls.sql
 pnpm --filter @banking/service-core build
 pnpm dev:core          # identity + account + ledger + transfer + bff
 pnpm dev:web           # Apex Bank UI → http://127.0.0.1:5173
