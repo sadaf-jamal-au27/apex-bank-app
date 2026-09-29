@@ -35,7 +35,7 @@ export function registerRoutes(app: FastifyInstance, deps: ServiceDeps): void {
     const email = body.email?.trim().toLowerCase() ?? "";
     const password = body.password ?? "";
     const fullName = body.fullName?.trim() ?? "";
-    if (!email.includes("@") || password.length < 8 || fullName.length < 2) {
+    if (!email.includes("@") || password.length < 12 || fullName.length < 2) {
       return reply.code(400).send({ error: "invalid_input" });
     }
     const id = crypto.randomUUID();
@@ -64,11 +64,33 @@ export function registerRoutes(app: FastifyInstance, deps: ServiceDeps): void {
       full_name: string;
       password_hash: string;
       status: string;
-    }>(`SELECT id, email, full_name, password_hash, status FROM identity.users WHERE email=$1`, [email]);
+      failed_login_count: number;
+      locked_until: Date | null;
+    }>(
+      `SELECT id, email, full_name, password_hash, status, failed_login_count, locked_until
+       FROM identity.users WHERE email=$1`,
+      [email]
+    );
     const user = rows[0];
-    if (!user || user.status !== "active" || !verifyPassword(body.password ?? "", user.password_hash)) {
+    if (!user || user.status !== "active") {
       return reply.code(401).send({ error: "invalid_credentials" });
     }
+    if (user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
+      return reply.code(423).send({ error: "account_locked" });
+    }
+    if (!verifyPassword(body.password ?? "", user.password_hash)) {
+      const fails = Number(user.failed_login_count) + 1;
+      const lock = fails >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
+      await deps.db.query(
+        `UPDATE identity.users SET failed_login_count=$1, locked_until=$2, updated_at=NOW() WHERE id=$3`,
+        [fails, lock?.toISOString() ?? null, user.id]
+      );
+      return reply.code(401).send({ error: "invalid_credentials" });
+    }
+    await deps.db.query(
+      `UPDATE identity.users SET failed_login_count=0, locked_until=NULL, updated_at=NOW() WHERE id=$1`,
+      [user.id]
+    );
     const token = randomBytes(32).toString("hex");
     const expires = new Date(Date.now() + SESSION_DAYS * 864e5);
     await deps.db.query(

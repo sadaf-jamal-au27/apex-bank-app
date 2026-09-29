@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest, ServiceDeps } from "@banking/service-core";
+import { internalHeaders } from "@banking/service-core";
 
 const u = (key: string, fallback: string) => process.env[key] ?? fallback;
 
@@ -15,7 +16,7 @@ type AuthedUser = { id: string; email: string; fullName: string };
 async function proxy(url: string, init?: RequestInit) {
   const res = await fetch(url, {
     ...init,
-    headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+    headers: internalHeaders(init?.headers),
   });
   const body = await res.json().catch(() => ({}));
   return { status: res.status, body };

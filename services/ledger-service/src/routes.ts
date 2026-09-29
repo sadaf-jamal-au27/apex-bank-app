@@ -207,4 +207,30 @@ export function registerRoutes(app: FastifyInstance, deps: ServiceDeps): void {
     houseFundingAccountId: HOUSE_FUNDING,
     houseMerchantAccountId: HOUSE_MERCHANT,
   }));
+
+  app.get("/v1/ledger/reconcile/:accountId", async (req, reply) => {
+    if (!deps.db) return reply.code(503).send({ error: "database_unavailable" });
+    const { accountId } = req.params as { accountId: string };
+    const { rows } = await deps.db.query<{
+      cache_paise: string;
+      ledger_paise: string;
+    }>(
+      `SELECT a.available_balance_paise::text AS cache_paise,
+              COALESCE(SUM(CASE WHEN jl.direction = 'credit' THEN jl.amount_paise ELSE -jl.amount_paise END), 0)::text AS ledger_paise
+       FROM account.accounts a
+       LEFT JOIN ledger.journal_legs jl ON jl.account_id = a.id
+       WHERE a.id = $1
+       GROUP BY a.available_balance_paise`,
+      [accountId]
+    );
+    if (!rows[0]) return reply.code(404).send({ error: "not_found" });
+    const cachePaise = Number(rows[0].cache_paise);
+    const ledgerPaise = Number(rows[0].ledger_paise);
+    return {
+      accountId,
+      cachePaise,
+      ledgerPaise,
+      balanced: cachePaise === ledgerPaise,
+    };
+  });
 }

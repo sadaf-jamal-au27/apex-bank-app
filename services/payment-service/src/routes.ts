@@ -1,4 +1,5 @@
 import type { FastifyInstance, ServiceDeps } from "@banking/service-core";
+import { internalHeaders } from "@banking/service-core";
 
 const LEDGER_URL = process.env.LEDGER_URL ?? "http://127.0.0.1:4104";
 const HOUSE_MERCHANT = "00000000-0000-4000-8000-000000000020";
@@ -72,7 +73,7 @@ export function registerRoutes(app: FastifyInstance, deps: ServiceDeps): void {
 
     const journalRes = await fetch(`${LEDGER_URL}/v1/journals`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: internalHeaders(),
       body: JSON.stringify({
         idempotencyKey: `bill:${key}`,
         referenceType: "bill_payment",
