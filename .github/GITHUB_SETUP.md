@@ -1,12 +1,9 @@
-# GitHub (apex-bank-app)
+# GitHub Environment `dev`
 
-This repository **is** the Apex Bank application: https://github.com/sadaf-jamal-au27/apex-bank-app
+| Secret | Source |
+|--------|--------|
+| `GCP_WIF_PROVIDER` | infra `01-iam`: `terraform output -raw wif_provider` |
+| `GCP_CI_SERVICE_ACCOUNT` | `github-ci-banking-dev@ai-rag-agent-project.iam.gserviceaccount.com` |
+| `GCP_PROJECT_ID` | `ai-rag-agent-project` (optional) |
 
-| Item | Status |
-|------|--------|
-| Default branch | `main` |
-| Integration branch | `develop` (create if missing) |
-| Workflow | `.github/workflows/ci.yml` — typecheck, build, docker (no GAR push until WIF) |
-| Infra / WIF | Landing zone is **not** this repo. Until split, Terraform lives under `gke-microservices` → `banking-infra/gke-banking-infra`. WIF must list **`apex-bank-app`**. |
-
-Protect `develop` and `main`: PR required, required check **Typecheck & build**.
+Push to **`develop`** or **Run workflow** runs the publish job (GAR `banking/*`).
