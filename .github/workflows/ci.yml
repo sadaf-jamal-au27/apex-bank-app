@@ -63,17 +63,27 @@ jobs:
             pkg: "@banking/card-service"
           - dir: bff-api-service
             pkg: "@banking/bff-api-service"
+          - dir: customer-web
+            pkg: "@banking/customer-web"
+            dockerfile: docker/customer-web.Dockerfile
     steps:
       - uses: actions/checkout@v4
 
       - name: Build image
         run: |
-          docker build \
-            -f docker/service.Dockerfile \
-            --build-arg SERVICE_DIR=${{ matrix.dir }} \
-            --build-arg SERVICE_FILTER=${{ matrix.pkg }} \
-            -t banking/${{ matrix.dir }}:${{ github.sha }} \
-            .
+          if [ "${{ matrix.dir }}" = "customer-web" ]; then
+            docker build \
+              -f docker/customer-web.Dockerfile \
+              -t banking/customer-web:${{ github.sha }} \
+              .
+          else
+            docker build \
+              -f docker/service.Dockerfile \
+              --build-arg SERVICE_DIR=${{ matrix.dir }} \
+              --build-arg SERVICE_FILTER=${{ matrix.pkg }} \
+              -t banking/${{ matrix.dir }}:${{ github.sha }} \
+              .
+          fi
 
   publish:
     name: Push images to Artifact Registry
@@ -129,3 +139,10 @@ jobs:
             docker push "${IMAGE}"
             docker push "${PREFIX}/${DIR}:develop-latest"
           done
+          WEB_IMAGE="${PREFIX}/customer-web:${TAG}"
+          docker build -f docker/customer-web.Dockerfile \
+            -t "${WEB_IMAGE}" \
+            -t "${PREFIX}/customer-web:develop-latest" \
+            .
+          docker push "${WEB_IMAGE}"
+          docker push "${PREFIX}/customer-web:develop-latest"
